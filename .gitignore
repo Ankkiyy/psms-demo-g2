@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+raspberry_pi_server/venv/
+cloud_integration/venv/
+
+# Environment variables
+.env
+*.env
+!.env.example
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+psms_data.db
+
+# Google Cloud credentials
+service-account-key.json
+*-key.json
+credentials.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.out
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Backups
+backups/
+*.backup
+*.bak
+
+# Node modules (if any frontend is added)
+node_modules/
+package-lock.json
+
+# Arduino build files
+*.hex
+*.elf
+*.bin
+
+# OS generated
+Thumbs.db
+.DS_Store
