@@ -151,6 +151,7 @@ def save_sensor_data(data: Dict[str, Any]) -> int:
         record_id = cursor.lastrowid
         
         # Update device last_seen
+        # Note: ON CONFLICT requires SQLite 3.24.0+ (available in Python 3.7+)
         cursor.execute('''
             INSERT INTO devices (device_id, location, last_seen)
             VALUES (?, ?, CURRENT_TIMESTAMP)
@@ -268,7 +269,6 @@ def receive_sensor_data():
             'status': 'success',
             'message': 'Sensor data received and stored',
             'record_id': record_id,
-            'device_id': data.get('device_id'),
             'alert_active': data.get('alert_active', False)
         }
         

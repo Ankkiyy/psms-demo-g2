@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSMS API Test Script
 # Tests all API endpoints to verify server functionality
 

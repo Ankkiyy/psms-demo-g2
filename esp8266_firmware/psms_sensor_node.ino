@@ -21,10 +21,13 @@
 #include <ArduinoJson.h>
 
 // WiFi Configuration
+// NOTE: For production, consider using WiFiManager library for secure OTA configuration
+// or store credentials in EEPROM instead of hardcoding
 const char* ssid = "YOUR_WIFI_SSID";
 const char* password = "YOUR_WIFI_PASSWORD";
 
 // Server Configuration
+// NOTE: For production deployment, use HTTPS instead of HTTP for secure data transmission
 const char* serverUrl = "http://RASPBERRY_PI_IP:5000/api/sensor-data";
 
 // Sensor Pins
@@ -174,7 +177,7 @@ int readDistance() {
   digitalWrite(TRIG_PIN, LOW);
   
   // Read echo pulse
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // Timeout after 30ms
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);  // Timeout after 30000 microseconds (30ms)
   
   // Calculate distance in cm
   int distance = duration * 0.034 / 2;
