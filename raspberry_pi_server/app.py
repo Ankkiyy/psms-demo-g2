@@ -75,6 +75,7 @@ def init_database():
             humidity REAL,
             air_quality INTEGER,
             distance INTEGER,
+            gas_detected BOOLEAN DEFAULT 0,
             alert_type TEXT,
             alert_active BOOLEAN,
             synced_to_cloud BOOLEAN DEFAULT 0,
@@ -143,10 +144,10 @@ def save_sensor_data(data: Dict[str, Any]) -> int:
         
         # Insert sensor data
         cursor.execute('''
-            INSERT INTO sensor_data 
-            (device_id, location, device_timestamp, temperature, humidity, 
-             air_quality, distance, alert_type, alert_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sensor_data
+            (device_id, location, device_timestamp, temperature, humidity,
+             air_quality, distance, gas_detected, alert_type, alert_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             device_id,
             location,
@@ -155,6 +156,7 @@ def save_sensor_data(data: Dict[str, Any]) -> int:
             sensors.get('humidity'),
             sensors.get('air_quality'),
             sensors.get('distance'),
+            sensors.get('gas_detected', False),
             alert_type,
             alert_active
         ))
@@ -203,14 +205,15 @@ def generate_alert_message(alert_type: str, sensors: Dict[str, Any]) -> str:
         'high_temperature': f"High temperature alert: {sensors.get('temperature', 'N/A')}°C",
         'low_temperature': f"Low temperature alert: {sensors.get('temperature', 'N/A')}°C",
         'high_humidity': f"High humidity alert: {sensors.get('humidity', 'N/A')}%",
-        'door_intrusion': f"Unattended door activity detected: {sensors.get('distance', 'N/A')} cm"
+        'door_intrusion': f"Unattended door activity detected: {sensors.get('distance', 'N/A')} cm",
+        'gas_detected': "Gas detected on digital pin D0 (GPIO0); investigate immediately"
     }
     return messages.get(alert_type, f"Alert: {alert_type}")
 
 
 def get_alert_severity(alert_type: str) -> str:
     """Determine alert severity based on type."""
-    high_severity = ['door_intrusion', 'poor_air_quality']
+    high_severity = ['door_intrusion', 'poor_air_quality', 'gas_detected']
     if alert_type in high_severity:
         return 'high'
     return 'medium'
@@ -223,6 +226,7 @@ def simulate_sensor_payload() -> Dict[str, Any]:
     air_quality = random.randint(300, 650)
     distance = random.randint(20, 120)
     heart_rate = random.randint(60, 105)
+    gas_detected = random.random() < 0.05
 
     activity_states = ['walking', 'sitting', 'sleeping']
     activity = random.choice(activity_states)
@@ -231,7 +235,10 @@ def simulate_sensor_payload() -> Dict[str, Any]:
     alert_type = 'none'
     alert_active = False
 
-    if air_quality > ALERT_THRESHOLDS['air_quality']:
+    if gas_detected:
+        alert_type = 'gas_detected'
+        alert_active = True
+    elif air_quality > ALERT_THRESHOLDS['air_quality']:
         alert_type = 'poor_air_quality'
         alert_active = True
     elif temperature > ALERT_THRESHOLDS['temp_high']:
@@ -263,6 +270,9 @@ def simulate_sensor_payload() -> Dict[str, Any]:
             'heart_rate': heart_rate,
             'activity': activity,
             'fall_detected': fall_detected,
+            'gas_detected': gas_detected,
+            'gas_pin': 'GPIO0 (D0)',
+            'gas_analog': None,
         },
         'alert_type': alert_type,
         'alert_active': alert_active,

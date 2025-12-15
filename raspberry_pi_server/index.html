@@ -232,6 +232,11 @@
           <small>cm</small>
         </div>
         <div class="metric">
+          <h3>Gas Sensor</h3>
+          <div class="value" id="gasStatus">—</div>
+          <small id="gasDetail">Digital D0 (GPIO0) • A0 empty</small>
+        </div>
+        <div class="metric">
           <h3>Activity</h3>
           <div class="value" id="activityValue">—</div>
           <small id="fallStatus">No fall detected</small>
@@ -275,6 +280,8 @@
     const heartRateValue = document.getElementById('heartRateValue');
     const airQualityValue = document.getElementById('airQualityValue');
     const distanceValue = document.getElementById('distanceValue');
+    const gasStatus = document.getElementById('gasStatus');
+    const gasDetail = document.getElementById('gasDetail');
     const activityValue = document.getElementById('activityValue');
     const fallStatus = document.getElementById('fallStatus');
     const alertList = document.getElementById('alertList');
@@ -320,6 +327,8 @@
       heartRateValue.textContent = '0 bpm';
       airQualityValue.textContent = '0 ppm';
       distanceValue.textContent = '0 cm';
+      gasStatus.textContent = 'Clear';
+      gasDetail.textContent = 'Digital D0 (GPIO0) • A0 empty';
       activityValue.textContent = '—';
       fallStatus.textContent = 'Awaiting device';
     }
@@ -340,6 +349,11 @@
       distanceValue.textContent = `${Number(sensors.distance || 0)} cm`;
       heartRateValue.textContent = `${heartRate || 0} bpm`;
 
+      const gasIsDetected = Boolean(sensors.gas_detected);
+      gasStatus.textContent = gasIsDetected ? 'Gas detected' : 'Clear';
+      gasStatus.style.color = gasIsDetected ? '#fecdd3' : '#e2e8f0';
+      gasDetail.textContent = `${sensors.gas_pin || 'Digital D0 (GPIO0)'} • A0 empty`;
+
       const readableActivity = (sensors.activity || 'unknown').toString().replace(/_/g, ' ');
       activityValue.textContent = readableActivity.charAt(0).toUpperCase() + readableActivity.slice(1);
       fallStatus.textContent = sensors.fall_detected ? 'Fall detected' : 'No fall detected';
@@ -356,7 +370,7 @@
       badge.textContent = alert_active ? alert_type.replace(/_/g, ' ') : 'normal';
       if (!alert_active) {
         badge.classList.add('success');
-      } else if (alert_type && (alert_type.includes('temperature') || alert_type === 'door_intrusion')) {
+      } else if (alert_type && (alert_type.includes('temperature') || alert_type === 'door_intrusion' || alert_type === 'gas_detected')) {
         badge.classList.add('danger');
       } else {
         badge.classList.add('warning');
@@ -381,7 +395,8 @@
         const label = item.alert_active ? `<strong>${item.alert_type.replace(/_/g, ' ')}</strong>` : `<strong>${activity}</strong>`;
         const badgeClass = item.alert_active ? 'warning' : 'success';
         const fallNote = item.sensors.fall_detected ? ' • fall' : '';
-        const timeStampLabel = `${formatTimestamp(item.timestamp)}${fallNote}`;
+        const gasNote = item.sensors.gas_detected ? ' • gas' : '';
+        const timeStampLabel = `${formatTimestamp(item.timestamp)}${fallNote}${gasNote}`;
         const li = document.createElement('li');
         li.className = 'list-item';
         li.innerHTML = `${label}<span class="badge ${badgeClass}">${timeStampLabel}</span>`;
@@ -405,6 +420,9 @@
           humidity: 0,
           air_quality: 0,
           distance: 0,
+          gas_detected: false,
+          gas_pin: 'GPIO0 (D0)',
+          gas_analog: null,
           heart_rate: lastHeartRate,
           activity: 'idle',
           fall_detected: false,
