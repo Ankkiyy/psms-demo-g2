@@ -13,18 +13,23 @@ Features:
 - Data visualization endpoints
 """
 
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask import Flask, request, jsonify, Response, send_from_directory
+from flask_cors import CORS, cross_origin
 from datetime import datetime
 import sqlite3
 import json
 import os
+import random
+import time
 from typing import Dict, Any, Optional
 import logging
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend access
+
+# Explicitly allow localhost development origins for dashboard hosting and SSE
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5000,http://127.0.0.1:5000').split(',')
+CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})  # Enable CORS for frontend access
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +41,12 @@ logger = logging.getLogger(__name__)
 # Configuration
 DATABASE_PATH = 'psms_data.db'
 CLOUD_SYNC_ENABLED = os.getenv('CLOUD_SYNC_ENABLED', 'false').lower() == 'true'
+STATIC_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Simulation settings (used until real ESP data is wired up)
+SIMULATED_DEVICE_ID = os.getenv('SIMULATED_DEVICE_ID', 'ESP8266_PSMS_001')
+SIMULATED_LOCATION = os.getenv('SIMULATED_LOCATION', 'Room_101')
+SIMULATED_INTERVAL_SEC = float(os.getenv('SIMULATED_INTERVAL_SEC', '2.0'))
 
 # Alert thresholds (can be overridden by environment variables)
 ALERT_THRESHOLDS = {
@@ -64,6 +75,7 @@ def init_database():
             humidity REAL,
             air_quality INTEGER,
             distance INTEGER,
+            gas_detected BOOLEAN DEFAULT 0,
             alert_type TEXT,
             alert_active BOOLEAN,
             synced_to_cloud BOOLEAN DEFAULT 0,
@@ -132,10 +144,10 @@ def save_sensor_data(data: Dict[str, Any]) -> int:
         
         # Insert sensor data
         cursor.execute('''
-            INSERT INTO sensor_data 
-            (device_id, location, device_timestamp, temperature, humidity, 
-             air_quality, distance, alert_type, alert_active)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO sensor_data
+            (device_id, location, device_timestamp, temperature, humidity,
+             air_quality, distance, gas_detected, alert_type, alert_active)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             device_id,
             location,
@@ -144,6 +156,7 @@ def save_sensor_data(data: Dict[str, Any]) -> int:
             sensors.get('humidity'),
             sensors.get('air_quality'),
             sensors.get('distance'),
+            sensors.get('gas_detected', False),
             alert_type,
             alert_active
         ))
@@ -192,34 +205,139 @@ def generate_alert_message(alert_type: str, sensors: Dict[str, Any]) -> str:
         'high_temperature': f"High temperature alert: {sensors.get('temperature', 'N/A')}°C",
         'low_temperature': f"Low temperature alert: {sensors.get('temperature', 'N/A')}°C",
         'high_humidity': f"High humidity alert: {sensors.get('humidity', 'N/A')}%",
-        'door_intrusion': f"Unattended door activity detected: {sensors.get('distance', 'N/A')} cm"
+        'door_intrusion': f"Unattended door activity detected: {sensors.get('distance', 'N/A')} cm",
+        'gas_detected': "Gas detected on digital pin D0 (GPIO0); investigate immediately"
     }
     return messages.get(alert_type, f"Alert: {alert_type}")
 
 
 def get_alert_severity(alert_type: str) -> str:
     """Determine alert severity based on type."""
-    high_severity = ['door_intrusion', 'poor_air_quality']
+    high_severity = ['door_intrusion', 'poor_air_quality', 'gas_detected']
     if alert_type in high_severity:
         return 'high'
     return 'medium'
 
 
+def simulate_sensor_payload() -> Dict[str, Any]:
+    """Generate a simulated sensor payload for a single ESP device."""
+    temperature = round(random.uniform(20.0, 28.0), 1)
+    humidity = round(random.uniform(40.0, 65.0), 1)
+    air_quality = random.randint(300, 650)
+    distance = random.randint(20, 120)
+    heart_rate = random.randint(60, 105)
+    gas_detected = random.random() < 0.05
+
+    activity_states = ['walking', 'sitting', 'sleeping']
+    activity = random.choice(activity_states)
+    fall_detected = random.random() < 0.03
+
+    alert_type = 'none'
+    alert_active = False
+
+    if gas_detected:
+        alert_type = 'gas_detected'
+        alert_active = True
+    elif air_quality > ALERT_THRESHOLDS['air_quality']:
+        alert_type = 'poor_air_quality'
+        alert_active = True
+    elif temperature > ALERT_THRESHOLDS['temp_high']:
+        alert_type = 'high_temperature'
+        alert_active = True
+    elif temperature < ALERT_THRESHOLDS['temp_low']:
+        alert_type = 'low_temperature'
+        alert_active = True
+    elif humidity > ALERT_THRESHOLDS['humidity_high']:
+        alert_type = 'high_humidity'
+        alert_active = True
+    elif distance < ALERT_THRESHOLDS['distance']:
+        alert_type = 'door_intrusion'
+        alert_active = True
+
+    if fall_detected:
+        alert_type = 'fall_detected'
+        alert_active = True
+
+    payload: Dict[str, Any] = {
+        'device_id': SIMULATED_DEVICE_ID,
+        'location': SIMULATED_LOCATION,
+        'timestamp': int(time.time()),
+        'sensors': {
+            'temperature': temperature,
+            'humidity': humidity,
+            'air_quality': air_quality,
+            'distance': distance,
+            'heart_rate': heart_rate,
+            'activity': activity,
+            'fall_detected': fall_detected,
+            'gas_detected': gas_detected,
+            'gas_pin': 'GPIO0 (D0)',
+            'gas_analog': None,
+        },
+        'alert_type': alert_type,
+        'alert_active': alert_active,
+    }
+
+    return payload
+
+
+def generate_device_stream():
+    """Yield simulated device payloads at a fixed interval."""
+    while True:
+        payload = simulate_sensor_payload()
+        try:
+            save_sensor_data(payload)
+        except Exception as exc:
+            logger.error(f"Failed to persist simulated data: {exc}")
+        yield payload
+        time.sleep(SIMULATED_INTERVAL_SEC)
+
+
 @app.route('/')
 def index():
-    """API root endpoint."""
+    """Serve the dashboard UI by default."""
+    return send_from_directory(STATIC_DIR, 'index.html')
+
+
+@app.route('/health')
+def health():
+    """API health endpoint for programmatic checks."""
     return jsonify({
         'name': 'Patient Security Management System API',
         'version': '1.0.0',
         'status': 'running',
         'endpoints': {
+            'dashboard': '/dashboard',
             'sensor_data': '/api/sensor-data',
             'latest_data': '/api/latest-data',
             'alerts': '/api/alerts',
             'devices': '/api/devices',
-            'statistics': '/api/statistics'
+            'statistics': '/api/statistics',
+            'events': '/events'
         }
     })
+
+
+@app.route('/dashboard')
+def dashboard():
+    """Serve the live dashboard UI."""
+    return send_from_directory(STATIC_DIR, 'index.html')
+
+
+@app.route('/events')
+@cross_origin(origins=ALLOWED_ORIGINS)
+def stream_events():
+    """Stream simulated device payloads via Server-Sent Events."""
+
+    def event_generator():
+        for payload in generate_device_stream():
+            yield f"data: {json.dumps(payload)}\n\n"
+
+    headers = {
+        'Cache-Control': 'no-cache',
+        'X-Accel-Buffering': 'no'
+    }
+    return Response(event_generator(), mimetype='text/event-stream', headers=headers)
 
 
 @app.route('/api/sensor-data', methods=['POST'])
@@ -460,10 +578,11 @@ def health_check():
     }), 200
 
 
+# Ensure database tables exist when the app module is imported
+init_database()
+
+
 if __name__ == '__main__':
-    # Initialize database on startup
-    init_database()
-    
     # Run Flask app
     host = os.getenv('FLASK_HOST', '0.0.0.0')
     port = int(os.getenv('FLASK_PORT', 5000))
