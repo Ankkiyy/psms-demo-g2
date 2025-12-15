@@ -211,6 +211,11 @@
           <div class="value" id="humidityValue">—</div>
           <small>%</small>
         </div>
+        <div class="metric">
+          <h3>Heart Rate</h3>
+          <div class="value" id="heartRateValue">—</div>
+          <small>bpm</small>
+        </div>
       </div>
     </div>
     <div class="card">
@@ -225,6 +230,11 @@
           <h3>Door Distance</h3>
           <div class="value" id="distanceValue">—</div>
           <small>cm</small>
+        </div>
+        <div class="metric">
+          <h3>Activity</h3>
+          <div class="value" id="activityValue">—</div>
+          <small id="fallStatus">No fall detected</small>
         </div>
       </div>
     </div>
@@ -262,17 +272,27 @@
     const deviceStatus = document.getElementById('deviceStatus');
     const temperatureValue = document.getElementById('temperatureValue');
     const humidityValue = document.getElementById('humidityValue');
+    const heartRateValue = document.getElementById('heartRateValue');
     const airQualityValue = document.getElementById('airQualityValue');
     const distanceValue = document.getElementById('distanceValue');
+    const activityValue = document.getElementById('activityValue');
+    const fallStatus = document.getElementById('fallStatus');
     const alertList = document.getElementById('alertList');
     const readingHistory = document.getElementById('readingHistory');
 
     const historyItems = [];
     const maxHistory = 6;
+    const offlineStaleMs = 6000;
+
+    let lastHeartRate = 0;
+    let lastMessageAt = 0;
+    let lastPayload = null;
+    let monitorHandle = null;
 
     function formatTimestamp(seconds) {
+      if (!seconds) return '—';
       const d = new Date(seconds * 1000);
-      return d.toLocaleTimeString();
+      return Number.isNaN(d.getTime()) ? '—' : d.toLocaleTimeString();
     }
 
     function setConnectionState(state, message) {
@@ -282,31 +302,61 @@
         statusLabel.textContent = 'Live stream active';
       } else if (state === 'offline') {
         statusDot.classList.add('offline');
-        statusLabel.textContent = 'Connection lost';
+        statusLabel.textContent = 'Device not connected';
       } else {
         statusLabel.textContent = 'Connecting…';
       }
       if (message) lastUpdate.textContent = message;
     }
 
-    function updateMetrics(payload) {
-      const { device_id, location, sensors, alert_type, alert_active, timestamp } = payload;
+    function applyDisconnectedState(message = 'Device not connected') {
+      setConnectionState('offline', message);
+      lastHeartRate = 0;
+      lastMessageAt = 0;
+      deviceStatus.textContent = 'Disconnected';
+      deviceStatus.className = 'badge danger';
+      temperatureValue.textContent = '0°';
+      humidityValue.textContent = '0%';
+      heartRateValue.textContent = '0 bpm';
+      airQualityValue.textContent = '0 ppm';
+      distanceValue.textContent = '0 cm';
+      activityValue.textContent = '—';
+      fallStatus.textContent = 'Awaiting device';
+    }
+
+    function updateMetrics(payload, options = {}) {
+      const { device_id, location, sensors = {}, alert_type, alert_active, timestamp } = payload;
+      const { manual = false } = options;
+      lastPayload = payload;
+
+      const heartRate = Number(sensors.heart_rate || 0);
+      lastHeartRate = heartRate;
+
       deviceId.textContent = device_id;
       locationBadge.textContent = location;
-      temperatureValue.textContent = `${sensors.temperature.toFixed(1)}°`;
-      humidityValue.textContent = `${sensors.humidity.toFixed(1)}%`;
-      airQualityValue.textContent = `${sensors.air_quality} ppm`;
-      distanceValue.textContent = `${sensors.distance} cm`;
-      deviceStatus.textContent = 'Simulated device';
-      deviceStatus.className = 'badge info';
-      lastUpdate.textContent = `Last update ${formatTimestamp(timestamp)}`;
+      temperatureValue.textContent = `${Number(sensors.temperature || 0).toFixed(1)}°`;
+      humidityValue.textContent = `${Number(sensors.humidity || 0).toFixed(1)}%`;
+      airQualityValue.textContent = `${Number(sensors.air_quality || 0)} ppm`;
+      distanceValue.textContent = `${Number(sensors.distance || 0)} cm`;
+      heartRateValue.textContent = `${heartRate || 0} bpm`;
+
+      const readableActivity = (sensors.activity || 'unknown').toString().replace(/_/g, ' ');
+      activityValue.textContent = readableActivity.charAt(0).toUpperCase() + readableActivity.slice(1);
+      fallStatus.textContent = sensors.fall_detected ? 'Fall detected' : 'No fall detected';
+      fallStatus.style.color = sensors.fall_detected ? '#fecdd3' : 'var(--muted)';
+
+      deviceStatus.textContent = heartRate > 0 ? 'Simulated device' : 'No heart rate detected';
+      deviceStatus.className = heartRate > 0 ? 'badge info' : 'badge warning';
+      lastUpdate.textContent = manual
+        ? `Status refreshed at ${formatTimestamp(timestamp)}`
+        : `Last update ${formatTimestamp(timestamp)}`;
 
       const badge = document.createElement('span');
       badge.classList.add('badge');
       badge.textContent = alert_active ? alert_type.replace(/_/g, ' ') : 'normal';
       if (!alert_active) {
         badge.classList.add('success');
-      } else if (alert_type.includes('temperature') || alert_type === 'door_intrusion') {
+      } else if (alert_type && (alert_type.includes('temperature') || alert_type === 'door_intrusion')) {
         badge.classList.add('danger');
       } else {
         badge.classList.add('warning');
@@ -327,31 +377,110 @@
     function renderHistory() {
       readingHistory.innerHTML = '';
       historyItems.forEach(item => {
+        const activity = item.sensors.activity ? item.sensors.activity.replace(/_/g, ' ') : 'unknown';
+        const label = item.alert_active ? `<strong>${item.alert_type.replace(/_/g, ' ')}</strong>` : `<strong>${activity}</strong>`;
+        const badgeClass = item.alert_active ? 'warning' : 'success';
+        const fallNote = item.sensors.fall_detected ? ' • fall' : '';
+        const timeStampLabel = `${formatTimestamp(item.timestamp)}${fallNote}`;
         const li = document.createElement('li');
         li.className = 'list-item';
-        const label = item.alert_active ? `<strong>${item.alert_type.replace(/_/g, ' ')}</strong>` : '<strong>OK</strong>';
-        li.innerHTML = `${label}<span class="badge ${item.alert_active ? 'warning' : 'success'}">${formatTimestamp(item.timestamp)}</span>`;
+        li.innerHTML = `${label}<span class="badge ${badgeClass}">${timeStampLabel}</span>`;
         readingHistory.appendChild(li);
       });
     }
 
+    function injectManualActivity(activityLabel, fall = false) {
+      if (!lastHeartRate || lastHeartRate <= 0) {
+        lastUpdate.textContent = 'No heart rate detected; manual scenarios are disabled.';
+        return;
+      }
+
+      const basePayload = lastPayload || {
+        device_id: 'ESP8266_PSMS_001',
+        location: 'Unassigned',
+        alert_type: 'none',
+        alert_active: false,
+        sensors: {
+          temperature: 0,
+          humidity: 0,
+          air_quality: 0,
+          distance: 0,
+          heart_rate: lastHeartRate,
+          activity: 'idle',
+          fall_detected: false,
+        },
+      };
+
+      const payload = {
+        ...basePayload,
+        timestamp: Math.floor(Date.now() / 1000),
+        sensors: {
+          ...basePayload.sensors,
+          heart_rate: lastHeartRate,
+          activity: activityLabel.toLowerCase(),
+          fall_detected: fall,
+        },
+        alert_type: fall ? 'fall_detected' : basePayload.alert_type,
+        alert_active: fall || basePayload.alert_active,
+      };
+
+      updateMetrics(payload, { manual: true });
+    }
+
+    function startHotkeys() {
+      document.addEventListener('keydown', (event) => {
+        const key = event.key.toLowerCase();
+        if (key === 's') injectManualActivity('Sleeping');
+        if (key === 'w') injectManualActivity('Walking');
+        if (key === 'b') injectManualActivity('Sitting');
+        if (key === 'f') {
+          const currentActivity = activityValue.textContent && activityValue.textContent !== '—'
+            ? activityValue.textContent
+            : 'walking';
+          injectManualActivity(currentActivity, true);
+        }
+      });
+    }
+
     function startStream() {
-      const source = new EventSource('/events');
+      const origin = window.location.origin && window.location.origin !== 'null'
+        ? window.location.origin
+        : 'http://localhost:5000';
+      const apiBase = origin.includes('localhost') || origin.includes('127.0.0.1')
+        ? 'http://localhost:5000'
+        : origin;
 
-      source.onopen = () => setConnectionState('online', 'Stream connected');
+      const source = new EventSource(`${apiBase}/events`);
 
-      source.onerror = () => setConnectionState('offline', 'Attempting to reconnect…');
+      source.onopen = () => {
+        setConnectionState('online', 'Stream connected');
+      };
+
+      source.onerror = () => {
+        applyDisconnectedState('Attempting to reconnect…');
+      };
 
       source.onmessage = (event) => {
         setConnectionState('online');
         const payload = JSON.parse(event.data);
+        lastMessageAt = Date.now();
         updateMetrics(payload);
       };
+
+      monitorHandle = setInterval(() => {
+        if (!lastMessageAt) return;
+        const elapsed = Date.now() - lastMessageAt;
+        if (elapsed > offlineStaleMs) {
+          applyDisconnectedState('Device not connected');
+        }
+      }, 2000);
     }
 
     // Boot
     setConnectionState('connecting', 'Waiting for simulated device data');
+    applyDisconnectedState('Awaiting device');
     startStream();
+    startHotkeys();
   </script>
 </body>
 </html>

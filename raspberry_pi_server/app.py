@@ -14,7 +14,7 @@ Features:
 """
 
 from flask import Flask, request, jsonify, Response, send_from_directory
-from flask_cors import CORS
+from flask_cors import CORS, cross_origin
 from datetime import datetime
 import sqlite3
 import json
@@ -26,7 +26,10 @@ import logging
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for frontend access
+
+# Explicitly allow localhost development origins for dashboard hosting and SSE
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:5000,http://127.0.0.1:5000').split(',')
+CORS(app, resources={r"/*": {"origins": ALLOWED_ORIGINS}})  # Enable CORS for frontend access
 
 # Configure logging
 logging.basicConfig(
@@ -219,6 +222,11 @@ def simulate_sensor_payload() -> Dict[str, Any]:
     humidity = round(random.uniform(40.0, 65.0), 1)
     air_quality = random.randint(300, 650)
     distance = random.randint(20, 120)
+    heart_rate = random.randint(60, 105)
+
+    activity_states = ['walking', 'sitting', 'sleeping']
+    activity = random.choice(activity_states)
+    fall_detected = random.random() < 0.03
 
     alert_type = 'none'
     alert_active = False
@@ -239,6 +247,10 @@ def simulate_sensor_payload() -> Dict[str, Any]:
         alert_type = 'door_intrusion'
         alert_active = True
 
+    if fall_detected:
+        alert_type = 'fall_detected'
+        alert_active = True
+
     payload: Dict[str, Any] = {
         'device_id': SIMULATED_DEVICE_ID,
         'location': SIMULATED_LOCATION,
@@ -248,6 +260,9 @@ def simulate_sensor_payload() -> Dict[str, Any]:
             'humidity': humidity,
             'air_quality': air_quality,
             'distance': distance,
+            'heart_rate': heart_rate,
+            'activity': activity,
+            'fall_detected': fall_detected,
         },
         'alert_type': alert_type,
         'alert_active': alert_active,
@@ -270,7 +285,13 @@ def generate_device_stream():
 
 @app.route('/')
 def index():
-    """API root endpoint."""
+    """Serve the dashboard UI by default."""
+    return send_from_directory(STATIC_DIR, 'index.html')
+
+
+@app.route('/health')
+def health():
+    """API health endpoint for programmatic checks."""
     return jsonify({
         'name': 'Patient Security Management System API',
         'version': '1.0.0',
@@ -294,6 +315,7 @@ def dashboard():
 
 
 @app.route('/events')
+@cross_origin(origins=ALLOWED_ORIGINS)
 def stream_events():
     """Stream simulated device payloads via Server-Sent Events."""
 
