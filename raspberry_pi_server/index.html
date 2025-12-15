@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSMS Device Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --card: #1f2937;
+      --accent: #22d3ee;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --success: #22c55e;
+      --shadow: 0 15px 50px rgba(0,0,0,0.35);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(circle at 20% 20%, rgba(34, 211, 238, 0.07), transparent 25%),
+                  radial-gradient(circle at 80% 10%, rgba(244, 114, 182, 0.05), transparent 20%),
+                  var(--bg);
+      color: var(--text);
+      padding: 32px;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h1 span {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #22d3ee, #3b82f6);
+      color: #0b1224;
+      font-weight: 800;
+      text-transform: uppercase;
+      box-shadow: var(--shadow);
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: var(--card);
+      color: var(--muted);
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: var(--shadow);
+      min-width: 210px;
+      justify-content: center;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.15);
+      transition: all 0.3s ease;
+    }
+    .dot.online {
+      background: var(--success);
+      box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.15);
+    }
+    .dot.offline {
+      background: var(--danger);
+      box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.18);
+    }
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+    .grid.columns-3 {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+    .grid.columns-2 {
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    }
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      padding: 18px;
+      border: 1px solid rgba(255,255,255,0.05);
+      box-shadow: var(--shadow);
+    }
+    .card h2 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      color: var(--muted);
+      letter-spacing: 0.2px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .metric {
+      padding: 14px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(34, 211, 238, 0.07), rgba(59, 130, 246, 0.04));
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .metric h3 {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      letter-spacing: 0.3px;
+      text-transform: uppercase;
+    }
+    .metric .value {
+      font-size: 30px;
+      font-weight: 700;
+      margin: 6px 0 0;
+      color: #e0f2fe;
+    }
+    .metric small { color: var(--muted); }
+    .list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 10px;
+    }
+    .list-item {
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .list-item strong { color: #e2e8f0; }
+    .badge {
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .badge.success { background: rgba(34, 197, 94, 0.15); color: #bbf7d0; }
+    .badge.warning { background: rgba(245, 158, 11, 0.12); color: #fde68a; }
+    .badge.danger { background: rgba(239, 68, 68, 0.12); color: #fecdd3; }
+    .badge.info { background: rgba(34, 211, 238, 0.15); color: #a5f3fc; }
+    .footer {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+    @media (max-width: 720px) {
+      body { padding: 20px; }
+      h1 { font-size: 26px; }
+      .metrics { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span>PS</span> Patient Security Dashboard</h1>
+    <div class="status-pill" id="connectionStatus">
+      <div class="dot" id="statusDot"></div>
+      <div>
+        <div id="statusLabel">Connecting…</div>
+        <small id="lastUpdate">Awaiting first reading</small>
+      </div>
+    </div>
+  </header>
+
+  <section class="grid columns-3" style="margin-bottom: 18px;">
+    <div class="card">
+      <h2>Device</h2>
+      <ul class="list">
+        <li class="list-item"><strong>ID</strong><span id="deviceId" class="badge info">—</span></li>
+        <li class="list-item"><strong>Location</strong><span id="location" class="badge info">—</span></li>
+        <li class="list-item"><strong>Status</strong><span id="deviceStatus" class="badge warning">Simulated</span></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Sensor Snapshot</h2>
+      <div class="metrics">
+        <div class="metric">
+          <h3>Temperature</h3>
+          <div class="value" id="temperatureValue">—</div>
+          <small>°C</small>
+        </div>
+        <div class="metric">
+          <h3>Humidity</h3>
+          <div class="value" id="humidityValue">—</div>
+          <small>%</small>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Environment</h2>
+      <div class="metrics">
+        <div class="metric">
+          <h3>Air Quality</h3>
+          <div class="value" id="airQualityValue">—</div>
+          <small>ppm</small>
+        </div>
+        <div class="metric">
+          <h3>Door Distance</h3>
+          <div class="value" id="distanceValue">—</div>
+          <small>cm</small>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="grid columns-2">
+    <div class="card">
+      <h2>Latest Alerts</h2>
+      <ul class="list" id="alertList">
+        <li class="list-item">
+          <span>No alerts yet</span>
+          <span class="badge info">Waiting for data</span>
+        </li>
+      </ul>
+    </div>
+    <div class="card">
+      <h2>Recent Readings</h2>
+      <ul class="list" id="readingHistory">
+        <li class="list-item">
+          <span>Stream is connecting…</span>
+          <span class="badge info">—</span>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="footer">Live data streamed from Raspberry Pi backend (simulated until ESP is connected).</div>
+
+  <script>
+    const statusDot = document.getElementById('statusDot');
+    const statusLabel = document.getElementById('statusLabel');
+    const lastUpdate = document.getElementById('lastUpdate');
+    const deviceId = document.getElementById('deviceId');
+    const locationBadge = document.getElementById('location');
+    const deviceStatus = document.getElementById('deviceStatus');
+    const temperatureValue = document.getElementById('temperatureValue');
+    const humidityValue = document.getElementById('humidityValue');
+    const airQualityValue = document.getElementById('airQualityValue');
+    const distanceValue = document.getElementById('distanceValue');
+    const alertList = document.getElementById('alertList');
+    const readingHistory = document.getElementById('readingHistory');
+
+    const historyItems = [];
+    const maxHistory = 6;
+
+    function formatTimestamp(seconds) {
+      const d = new Date(seconds * 1000);
+      return d.toLocaleTimeString();
+    }
+
+    function setConnectionState(state, message) {
+      statusDot.classList.remove('offline', 'online');
+      if (state === 'online') {
+        statusDot.classList.add('online');
+        statusLabel.textContent = 'Live stream active';
+      } else if (state === 'offline') {
+        statusDot.classList.add('offline');
+        statusLabel.textContent = 'Connection lost';
+      } else {
+        statusLabel.textContent = 'Connecting…';
+      }
+      if (message) lastUpdate.textContent = message;
+    }
+
+    function updateMetrics(payload) {
+      const { device_id, location, sensors, alert_type, alert_active, timestamp } = payload;
+      deviceId.textContent = device_id;
+      locationBadge.textContent = location;
+      temperatureValue.textContent = `${sensors.temperature.toFixed(1)}°`;
+      humidityValue.textContent = `${sensors.humidity.toFixed(1)}%`;
+      airQualityValue.textContent = `${sensors.air_quality} ppm`;
+      distanceValue.textContent = `${sensors.distance} cm`;
+      deviceStatus.textContent = 'Simulated device';
+      deviceStatus.className = 'badge info';
+      lastUpdate.textContent = `Last update ${formatTimestamp(timestamp)}`;
+
+      const badge = document.createElement('span');
+      badge.classList.add('badge');
+      badge.textContent = alert_active ? alert_type.replace(/_/g, ' ') : 'normal';
+      if (!alert_active) {
+        badge.classList.add('success');
+      } else if (alert_type.includes('temperature') || alert_type === 'door_intrusion') {
+        badge.classList.add('danger');
+      } else {
+        badge.classList.add('warning');
+      }
+
+      alertList.innerHTML = '';
+      const alertItem = document.createElement('li');
+      alertItem.className = 'list-item';
+      alertItem.innerHTML = `<strong>${alert_active ? 'Active alert' : 'Status'}</strong>`;
+      alertItem.appendChild(badge);
+      alertList.appendChild(alertItem);
+
+      historyItems.unshift({ timestamp, sensors, alert_type, alert_active });
+      if (historyItems.length > maxHistory) historyItems.pop();
+      renderHistory();
+    }
+
+    function renderHistory() {
+      readingHistory.innerHTML = '';
+      historyItems.forEach(item => {
+        const li = document.createElement('li');
+        li.className = 'list-item';
+        const label = item.alert_active ? `<strong>${item.alert_type.replace(/_/g, ' ')}</strong>` : '<strong>OK</strong>';
+        li.innerHTML = `${label}<span class="badge ${item.alert_active ? 'warning' : 'success'}">${formatTimestamp(item.timestamp)}</span>`;
+        readingHistory.appendChild(li);
+      });
+    }
+
+    function startStream() {
+      const source = new EventSource('/events');
+
+      source.onopen = () => setConnectionState('online', 'Stream connected');
+
+      source.onerror = () => setConnectionState('offline', 'Attempting to reconnect…');
+
+      source.onmessage = (event) => {
+        setConnectionState('online');
+        const payload = JSON.parse(event.data);
+        updateMetrics(payload);
+      };
+    }
+
+    // Boot
+    setConnectionState('connecting', 'Waiting for simulated device data');
+    startStream();
+  </script>
+</body>
+</html>
